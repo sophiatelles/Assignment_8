@@ -1,0 +1,105 @@
+---
+title: "Assignment 8"
+author: "Sophia Telles & Samantha Driscoll"
+date: "November 9, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+load(file="providerspokane.rda")
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gudatavizfa17)
+library(devtools)
+library(namespace)
+library(ggmap)
+library(leaflet)
+```
+
+# Introduction
+To begin Assignment 8, we needed to create a subset of data from the Project 1 spokaneprovis.rda file. This subset needed to include medical providers for Internal Medicine, Gastronenterology, and Nephrology. 
+
+```{r}
+providerspokane <- providerspokane %>% filter( Provider.Type=="Gastroenterology" | Provider.Type== "Nephrology" | Provider.Type=="Internal Medicine")
+```
+
+
+From there we needed to create a few new columns that would include the full addresses and full names for all of these medical providers. From the full addresses, we were able to use the whatislatlon command to find the latitude and longitude for these addresses. 
+
+```{r}
+providerspokane$Full.Add <- do.call(paste,c(providerspokane[8:11],sep=" "))
+providerspokane$Full.Name <- do.call(paste,c(providerspokane[3:2],sep=" "))
+```
+
+```{r}
+whatislatlon=function(providerspokane,Full.Add){
+locs=geocode(as.character(unique(providerspokane[,Full.Add])))
+locs$address=unique(providerspokane[,Full.Add])
+providerspokane$latitude=locs$lat[ match(providerspokane[,Full.Add],locs$address)]
+providerspokane$longitude=locs$lon[ match(providerspokane[,Full.Add],locs$address)]
+return(providerspokane)
+}
+```
+
+```{r}
+LatsLons <- whatislatlon(providerspokane,"Full.Add")
+```
+
+
+```{r}
+info <- select(LatsLons,Provider.Type,Full.Name,Full.Add,Gender.of.the.Provider,latitude,longitude)
+info$Full.info <- do.call(paste,c(info[2:4],sep=", "))
+uniqueinfo <- unique(info)
+```
+
+We then created a new subset of data that included the information that we needed to provide for this assignment.
+After many trials of displaying this geographic data, we determined that certain locations would have duplicates of the same medical provider. After researching this outcome, we found that the duplicates were due to the HCPCS.code column. A medical provider could be one type of provider, but provide multiple different services. To solve this problem, we used the unique() command to eliminate any duplicates in our info dataset. 
+
+# 1. Static Map 
+
+```{r}
+location=c(-117.4260,47.6588)
+map=get_map(location=location,maptype="roadmap",source="google",zoom=11)
+spokanemap=ggmap(map)
+print(spokanemap)
+```
+
+```{r}
+spokanemap=spokanemap+geom_point(data=uniqueinfo,aes(longitude,latitude,color=Provider.Type),size=2)
+```
+
+```{r}
+spokanemap+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.text = element_blank(),axis.title = element_blank(),axis.ticks = element_blank())
+```
+
+There are many more internal medicine centers, which makes sense as this provider treats a wider variety of problems and problems that are much more common. There are Nephrology providers in the area and some Gastroenerology providers, but they are hard to see because they are behind another plot points. There was some difficulty with interpreting this graph, because in order to see the different markers, the zoom needed to be manipulated in order to see all of the providers in the area. One assumption that we can make, is that the providers that are not visible are probably located in hospitals or other large medical centers. 
+
+# 2. Interactive Map 
+
+```{r}
+providercolor <- colorFactor(palette= 'Set1',domain = uniqueinfo$Provider.Type)
+```
+
+```{r}
+leaflet(uniqueinfo) %>%addTiles()%>%addCircleMarkers(clusterOptions = markerClusterOptions(),popup=~Full.info, color = ~providercolor(Provider.Type)) %>% addLegend("bottomright",pal=providercolor,values=~Provider.Type,title="Provider Type",opacity=1)
+```
+
+
+When this map first shows up, the main problem is that there are two Spokane Providers, James David who is located in Colombus, Ohio, and Debra Cole who is located in Northwestern Indiana. We looked into our data and googled the addresses that were provided. These addresses checked out and were correctly located in Spokane. However when looking at the latitude and longitude that was pulled from our earlier functions, the two data points were not similar in any way to any other Spokane latitudes or longitudes. So this is one of our major errors. Past this, we clustered the data, so by simply clicking on the culsters, one can narrow down the data to locations. The final markers include the full names, addresses, and gender of this subset of Spokane providers. 
+The largest concentration of providers is within areas that have hospitals or large medical centers. If a provider is in their own specialized location or in a smaller practice facility, they are more likely to be internal medicine providers. Hospitals are more likely to host all three types of providers that we analyzed. Of course there are a few outliers, such as Sean Sanchez and Jason Deville, who are two Nephrology providers in the Country Homes area of Spokane. 
+
+# Conclusion
+
+Overall, we found our Interactive map to be much more useful in our analysis and understanding of the Gastronenterology, Internal Medicine, and Nephrology providers in Spokane. The interactive map had more possiblities for more detailed information, such as colored markers for the Provider Type.
+
+Another problem we had with our maps is data with missing or invalid lat/lon values. For example, when we run the data through our R programs, we have a total of 170 providers clustered in Spokane, but when we knit our file, the Interactive map shows less providers in Spokane. And the warning in the knitted document says that Data contains multiple rows with either missing or invlaid Lat/lon values. When we run the chunks in our R program, the warning reads that there are 10 rows with missing lat/lon. These providers address did not produce a longitude or latitude when we ran our earlier functions. 
+
+In the begining of our knitted document, there are multiple instances of the geocode failing. This could be due to how we created our full address data, or it could be stemming from how the data was originally entered. 
